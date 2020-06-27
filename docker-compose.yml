@@ -1,0 +1,89 @@
+version: "3"
+services:
+  postgres:
+    image: "postgres"
+    container_name: "postgres"
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/pgsql/data
+
+  initdb:
+    build: .
+    entrypoint: airflow upgradedb
+    environment:
+      - AIRFLOW_HOME=/usr/local/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__LOGGING__BASE_LOG_FOLDER=/usr/local/airflow/mylogs
+      - AIRFLOW__CORE__BASE_LOG_FOLDER=/usr/local/airflow/mylogs
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      - AIRFLOW__SCHEDULER__CHILD_PROCESS_LOG_DIRECTORY=/usr/local/airflow/mylogs
+    depends_on:
+      - postgres
+
+  webserver:
+    build: .
+    # restart: always
+    links: 
+      - postgres
+    depends_on:
+      - postgres
+    volumes:
+      - my_test_volume:/usr/local/airflow/mydags
+      - $PWD/airflow/logs:/usr/local/airflow/logs
+    ports:
+      - "8080:8080"
+    environment:
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__UNIT_TEST_MODE=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW_HOME=/usr/local/airflow
+      - AIRFLOW__CORE__DAGS_FOLDER=/usr/local/airflow/mydags
+      - AIRFLOW__SCHEDULER__CHILD_PROCESS_LOG_DIRECTORY=/usr/local/airflow/mylogs
+      - AIRFLOW__CORE__BASE_LOG_FOLDER=/usr/local/airflow/mylogs
+    entrypoint: airflow webserver
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /usr/local/airflow/airflow-webserver.pid ]"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  scheduler:
+    build: .
+    restart: always
+    depends_on:
+      - postgres
+    volumes:
+      - my_test_volume:/usr/local/airflow/mydags
+      - $PWD/airflow/logs:/usr/local/airflow/logs
+    entrypoint: airflow scheduler
+    environment:
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__UNIT_TEST_MODE=False
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW_HOME=/usr/local/airflow
+      - AIRFLOW__LOGGING__BASE_LOG_FOLDER=/usr/local/airflow/mylogs
+      - AIRFLOW__SCHEDULER__CHILD_PROCESS_LOG_DIRECTORY=/usr/local/airflow/mylogs
+      - AIRFLOW__CORE__BASE_LOG_FOLDER=/usr/local/airflow/mylogs
+      - AIRFLOW__CORE__DAGS_FOLDER=/usr/local/airflow/mydags
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /usr/local/airflow/airflow-scheduler.pid ]"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+volumes:
+  my_test_volume:
+    driver: local
+    driver_opts:
+       o: bind
+       type: none
+       device: /home/me/airflow/dags
+  my_dag_log_volume:
